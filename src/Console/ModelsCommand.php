@@ -101,6 +101,7 @@ class ModelsCommand extends Command
     protected $methods = [];
     protected $write = false;
     protected $write_mixin = false;
+    protected $dry_run = false;
     protected $dirs = [];
     protected $reset;
     protected $keep_text;
@@ -142,6 +143,7 @@ class ModelsCommand extends Command
         $this->filename = $this->laravel['config']->get('ide-helper.models_filename', '_ide_helper_models.php');
         $filename = $this->option('filename') ?? $this->filename;
         $this->write = $this->option('write');
+        $this->dry_run = $this->option('dry_run');
         $this->write_mixin = $this->option('write-mixin');
         $this->dirs = array_merge(
             $this->laravel['config']->get('ide-helper.model_locations', []),
@@ -212,6 +214,7 @@ class ModelsCommand extends Command
           ['dir', 'D', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY,
               'The model dir, supports glob patterns', [], ],
           ['write', 'W', InputOption::VALUE_NONE, 'Write to Model file'],
+          ['dry-run', 'dry', InputOption::VALUE_NONE, 'Lists the models that will be changed'],
           ['write-mixin', 'M', InputOption::VALUE_NONE,
               "Write models to {$this->filename} and adds @mixin to each model, avoiding IDE duplicate declaration warnings",
           ],
@@ -942,7 +945,7 @@ class ModelsCommand extends Command
 
             $phpdoc->appendTag(Tag::createInstance('@mixin ' . $eloquentClassNameInModel, $phpdoc));
         }
-        
+
         if ($this->phpstorm_noinspections) {
             /**
              * Facades, Eloquent API
@@ -989,7 +992,7 @@ class ModelsCommand extends Command
         if ($this->write) {
             $modelDocComment = $this->write_mixin ? $mixinDocComment : $docComment;
             $filename = $reflection->getFileName();
-            $contents = $this->files->get($filename);
+            $oldContents = $contents = $this->files->get($filename);
             if ($originalDoc) {
                 $contents = str_replace($originalDoc, $modelDocComment, $contents);
             } else {
@@ -999,8 +1002,15 @@ class ModelsCommand extends Command
                     $contents = substr_replace($contents, $replace, $pos, 0);
                 }
             }
-            if ($this->files->put($filename, $contents)) {
-                $this->info('Written new phpDocBlock to ' . $filename);
+
+            if ($this->dry_run) {
+                if ($contents !== $oldContents) {
+                    $this->error($filename);
+                }
+            }else {
+                if ($this->files->put($filename, $contents)) {
+                    $this->info('Written new phpDocBlock to '.$filename);
+                }
             }
         }
 
